@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order #{{ order.id }} Details</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            background-color: #f9f9f9;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 5px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            display: inline-block;
+        }
+        .order-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            color: #7f8c8d;
+            font-size: 0.95em;
+        }
+        .order-status {
+            background-color: #3498db;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 15px;
+            font-size: 0.85em;
+        }
+        .order-summary {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .items-table th {
+            background-color: #3498db;
+            color: white;
+            text-align: left;
+            padding: 12px;
+        }
+        .items-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        .items-table tr:last-child td {
+            border-bottom: none;
+        }
+        .items-table tr:hover {
+            background-color: #f1f1f1;
+        }
+        .total-section {
+            margin-top: 20px;
+            text-align: right;
+        }
+        .subtotal, .tax, .discount, .total {
+            display: flex;
+            justify-content: space-between;
+            max-width: 300px;
+            margin-left: auto;
+            padding: 5px 0;
+        }
+        .total {
+            font-size: 1.2em;
+            font-weight: bold;
+            border-top: 2px solid #3498db;
+            margin-top: 10px;
+            padding-top: 10px;
+        }
+        .discount-amount {
+            color: #e74c3c;
+        }
+        .payment-actions {
+            margin-top: 30px;
+            text-align: center;
+        }
+        .pay-button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1.1em;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .pay-button:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .currency {
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+        .no-items {
+            text-align: center;
+            color: #7f8c8d;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Order #{{ order.id }}</h1>
+
+        <div class="order-meta">
+            <div>
+                <span class="order-date">Created: {{ order.created_at|date:"M d, Y H:i" }}</span>
+            </div>
+            <div class="order-status">
+                {% if order.paid %}PAID{% else %}PENDING{% endif %}
+            </div>
+        </div>
+
+        <div class="order-summary">
+            <h3>Order Summary</h3>
+
+            {% if order.items.all %}
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Price</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.items.all %}
+                    <tr>
+                        <td>{{ item.name }} </td>
+                        <td>{{ item.price }} <span class="currency">{{ item.get_currency_display }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="total-section">
+                {% if order.discount %}
+                <div class="discount">
+                    <span>Discount ({{ order.discount.percent_off }}%):</span>
+                    <span class="discount-amount">-{{ order.discount_amount }} {{ order.currency }}</span>
+                </div>
+                {% endif %}
+
+                {% if order.tax %}
+                <div class="tax">
+                    <span>Tax ({{ order.tax.percentage }}%{% if order.tax.inclusive %}, inclusive{% endif %}):</span>
+                    <span>{{ order.tax_amount }} {{ order.currency }}</span>
+                </div>
+                {% endif %}
+
+                <div class="total">
+                    <span>Total:</span>
+                    <span>{{ order.total_price }} <span class="currency">{{ order.currency|upper }}</span></span>
+                </div>
+            </div>
+            {% else %}
+            <div class="no-items">
+                No items in this order
+            </div>
+            {% endif %}
+        </div>
+
+        <button class="pay-button" onclick="processPayment('{{ order.id }}', '{{ currency }}')">
+                Pay Now
+        </button>
+    </div>
+
+    <script>
+        async function processPayment(orderId, currency) {
+            try {
+                const response = await fetch(`/buy_order/{{ order.id }}/`);
+                const { session_id } = await response.json();
+
+                const stripe = Stripe('{{ stripe_public_key }}');
+                const { error } = await stripe.redirectToCheckout({
+                    sessionId: session_id
+                });
+
+                if (error) {
+                    console.error('Error:', error);
+                    alert('Payment failed: ' + error.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while processing your payment');
+            }
+        }
+    </script>
+</body>
+</html>
